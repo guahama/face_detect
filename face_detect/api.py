@@ -8,7 +8,7 @@ import boto3
 import uvicorn
 from face_detect import ImageBlur
 import cv2
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse
 import numpy as np
 import uuid
 import urllib
@@ -43,22 +43,25 @@ async def filter_image(file: UploadFile):
     nparr = np.frombuffer(content, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     filename = f'{uuid.uuid4()}.jpg'
-    filtered_img = filter.blur(img)
-    cv2.imwrite(filename, filtered_img)
+    cv2.imwrite(filename, img)
+    filtered_img = filter.blur(filename)
+    os.remove(filename)
+    filtered_filename = f'{uuid.uuid4()}.jpg'
+    cv2.imwrite(filtered_filename, filtered_img)
 
     try:
-        s3.upload_file(f'{filename}', os.getenv('S3_BUCKET_NAME'), filename, ExtraArgs={'ContentType': 'image/jpeg'})
+        s3.upload_file(f'{filtered_filename}', os.getenv('S3_BUCKET_NAME'), filtered_filename, ExtraArgs={'ContentType': 'image/jpeg'})
     except:
-        os.remove(f'{filename}')
+        os.remove(filtered_filename)
         return JSONResponse(status_code=500, content={'msg': 'failed to upload image'})
     
     url = "https://%s/%s" % (
         os.getenv('CLOUDFRONT_DOMAIN'),
-        urllib.parse.quote(filename, safe="~()*!.'")
+        urllib.parse.quote(filtered_filename, safe="~()*!.'")
     )
 
 
-    os.remove(f'{filename}')
+    os.remove(filtered_filename)
     return JSONResponse(status_code=200, content={'msg': 'success', 'url': url})
 
 
